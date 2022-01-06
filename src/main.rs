@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     // Stop on error including a pod already exists or is still being deleted.
     pods.create(&PostParams::default(), &p).await?;
 
-    info!("pod created");
+    debug!("pod created");
 
     // Wait until the pod is running, otherwise we get 500 error.
     let lp = ListParams::default().fields(format!("metadata.name={}",&pod_name).as_str()).timeout(opt.timeout);
@@ -65,12 +65,12 @@ async fn main() -> anyhow::Result<()> {
     while let Some(status) = stream.try_next().await? {
         match status {
             WatchEvent::Added(o) => {
-                info!("Added {}", o.name());
+                debug!("Added {}", o.name());
             }
             WatchEvent::Modified(o) => {
                 let s = o.status.as_ref().expect("status exists on pod");
                 if s.phase.clone().unwrap_or_default() == "Running" {
-                    info!("Ready to attach to {}", o.name());
+                    debug!("Ready to attach to {}", o.name());
                     break;
                 }
             }
@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    info!("attaching to pod");
+    debug!("attaching to pod");
 
     // Do an interactive exec to a blog pod with the `sh` command
     let ap = AttachParams::interactive_tty();
@@ -102,15 +102,17 @@ async fn main() -> anyhow::Result<()> {
     });
     // When done, type `exit\n` to end it, so the pod is deleted.
     let status = attached.await;
-    println!("{:?}", status);
+    debug!("{:?}", status);
 
     // Delete it
-    println!("deleting");
+    debug!("deleting");
     pods.delete(&pod_name, &DeleteParams::default())
         .await?
         .map_left(|pdel| {
             assert_eq!(pdel.name(), pod_name.as_str());
         });
+    println!("Session ended");
+    println!("pod {} deleted", &pod_name);
 
     Ok(())
 }
