@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
         "metadata": { "name": pod_name },
         "spec": {
             "containers": [{
-                "name": "example",
+                "name": pod_name,
                 "image": image_name,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
@@ -57,8 +57,10 @@ async fn main() -> anyhow::Result<()> {
     // Stop on error including a pod already exists or is still being deleted.
     pods.create(&PostParams::default(), &p).await?;
 
+    info!("pod created");
+
     // Wait until the pod is running, otherwise we get 500 error.
-    let lp = ListParams::default().fields("metadata.name=example").timeout(1000);
+    let lp = ListParams::default().fields(format!("metadata.name={}",&pod_name).as_str()).timeout(100);
     let mut stream = pods.watch(&lp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
         match status {
@@ -76,9 +78,11 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    info!("attaching to pod");
+
     // Do an interactive exec to a blog pod with the `sh` command
     let ap = AttachParams::interactive_tty();
-    let mut attached = pods.exec("example", vec!["sh"], &ap).await?;
+    let mut attached = pods.exec(&pod_name, vec!["sh"], &ap).await?;
 
     // The received streams from `AttachedProcess`
     let mut stdin_writer = attached.stdin().unwrap();
@@ -102,10 +106,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Delete it
     println!("deleting");
-    pods.delete("example", &DeleteParams::default())
+    pods.delete(&pod_name, &DeleteParams::default())
         .await?
         .map_left(|pdel| {
-            assert_eq!(pdel.name(), "example");
+            assert_eq!(pdel.name(), pod_name.as_str());
         });
 
     Ok(())
