@@ -5,35 +5,60 @@ use kube::{
     api::{Api, AttachParams, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
     Client,
 };
-use log::info;
+use log::{debug, info};
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = env ! ("CARGO_PKG_NAME"), about = env ! ("CARGO_PKG_DESCRIPTION"))]
+struct Opt {
+    #[structopt(default_value = "default", long, short)]
+    namespace: String,
+    #[structopt(default_value = "mount-agent", long)]
+    pod_name: String,
+    #[structopt(default_value = "alpine", long)]
+    image_name: String,
+}
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // init log
     std::env::set_var("RUST_LOG", "info,kube=debug");
     env_logger::init();
+
+    // parse flags
+    let opt = Opt::from_args();
+    debug!("{:?}", opt);
+
+    info!("version: {}", env!("CARGO_PKG_VERSION"));
+
     let client = Client::try_default().await?;
-    let namespace = std::env::var("NAMESPACE").unwrap_or_else(|_| "default".into());
+    let namespace = opt.namespace;
+    let pod_name = opt.pod_name;
+    let image_name = opt.image_name;
 
     let p: Pod = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
         "kind": "Pod",
-        "metadata": { "name": "example" },
+        "metadata": { "name": pod_name },
         "spec": {
             "containers": [{
                 "name": "example",
-                "image": "alpine",
+                "image": image_name,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
             }],
         }
     }))?;
 
+    debug!("{:?}", p);
+
     let pods: Api<Pod> = Api::namespaced(client, &namespace);
     // Stop on error including a pod already exists or is still being deleted.
     pods.create(&PostParams::default(), &p).await?;
 
     // Wait until the pod is running, otherwise we get 500 error.
-    let lp = ListParams::default().fields("metadata.name=example").timeout(10);
+    let lp = ListParams::default().fields("metadata.name=example").timeout(1000);
     let mut stream = pods.watch(&lp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
         match status {
