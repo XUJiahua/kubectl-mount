@@ -15,8 +15,10 @@ struct Opt {
     namespace: String,
     #[structopt(default_value = "mount-agent", long)]
     pod_name: String,
-    #[structopt(default_value = "alpine", long)]
-    image_name: String,
+    #[structopt(default_value = "nicolaka/netshoot", long)]
+    image: String,
+    #[structopt(default_value = "100", long)]
+    timeout: u32,
 }
 
 
@@ -30,12 +32,10 @@ async fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
     debug!("{:?}", opt);
 
-    info!("version: {}", env!("CARGO_PKG_VERSION"));
-
     let client = Client::try_default().await?;
     let namespace = opt.namespace;
     let pod_name = opt.pod_name;
-    let image_name = opt.image_name;
+    let image_name = opt.image;
 
     let p: Pod = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     info!("pod created");
 
     // Wait until the pod is running, otherwise we get 500 error.
-    let lp = ListParams::default().fields(format!("metadata.name={}",&pod_name).as_str()).timeout(100);
+    let lp = ListParams::default().fields(format!("metadata.name={}",&pod_name).as_str()).timeout(opt.timeout);
     let mut stream = pods.watch(&lp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
         match status {
