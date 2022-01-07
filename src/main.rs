@@ -1,26 +1,35 @@
-use k8s_openapi::api::core::v1::Pod;
-use futures::{StreamExt, TryStreamExt};
+use std::process::exit;
 
+use futures::{StreamExt, TryStreamExt};
+use k8s_openapi::api::core::v1::Pod;
 use kube::{
     api::{Api, AttachParams, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
     Client,
 };
-use log::{debug, info};
+use log::{debug, warn};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = env ! ("CARGO_PKG_NAME"), about = env ! ("CARGO_PKG_DESCRIPTION"))]
 struct Opt {
+    /// namespace for the Agent Pod to run
     #[structopt(default_value = "default", long, short)]
     namespace: String,
+    /// override the default Agent Pod name
     #[structopt(default_value = "mount-agent", long)]
     pod_name: String,
+    /// the Image to use for the agent Pod
     #[structopt(default_value = "nicolaka/netshoot", long)]
     image: String,
     #[structopt(default_value = "100", long)]
     timeout: u32,
+    /// Persistent Volume Claim (PVC) name
+    #[structopt(long)]
+    pvc: String,
+    /// Readonly mode
+    #[structopt(default_value = "true", long)]
+    readonly: bool,
 }
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -31,11 +40,13 @@ async fn main() -> anyhow::Result<()> {
     // parse flags
     let opt = Opt::from_args();
     debug!("{:?}", opt);
-
-    let client = Client::try_default().await?;
     let namespace = opt.namespace;
     let pod_name = opt.pod_name;
     let image_name = opt.image;
+    let pvc = opt.pvc;
+    let readonly = opt.readonly;
+
+    let client = Client::try_default().await?;
 
     let p: Pod = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -47,6 +58,17 @@ async fn main() -> anyhow::Result<()> {
                 "image": image_name,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
+                "volumeMounts":[{
+                    "name": "mount-agent-pv",
+                    "mountPath": "/opt",
+                    "readOnly": readonly,
+                }],
+            }],
+            "volumes": [{
+                "name": "mount-agent-pv",
+                "persistentVolumeClaim": {
+                    "claimName": pvc,
+                }
             }],
         }
     }))?;
@@ -60,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
     debug!("pod created");
 
     // Wait until the pod is running, otherwise we get 500 error.
-    let lp = ListParams::default().fields(format!("metadata.name={}",&pod_name).as_str()).timeout(opt.timeout);
+    let lp = ListParams::default().fields(format!("metadata.name={}", &pod_name).as_str()).timeout(opt.timeout);
     let mut stream = pods.watch(&lp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
         match status {
