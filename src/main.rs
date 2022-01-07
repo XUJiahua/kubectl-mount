@@ -4,7 +4,7 @@ use kube::{
     api::{Api, AttachParams, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
     Client,
 };
-use log::{debug};
+use log::debug;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -16,17 +16,23 @@ struct Opt {
     /// override the default Agent Pod name
     #[structopt(default_value = "mount-agent", long)]
     pod_name: String,
-    /// the Image to use for the agent Pod
+    /// the Docker Image to use for the agent Pod
     #[structopt(default_value = "nicolaka/netshoot", long)]
     image: String,
+    /// the network timeout (seconds)
     #[structopt(default_value = "100", long)]
     timeout: u32,
     /// Persistent Volume Claim (PVC) name
-    #[structopt(long)]
+    #[structopt(default_value = "", long)]
     pvc: String,
-    /// By default, Readonly mode
-    #[structopt(long)]
-    readwrite: bool,
+    /// by default, mount PVC in readonly mode
+    #[structopt(long, short)]
+    write: bool,
+    /// if true, will attach to the existing Pod,
+    /// the creation of the agent Pod will be skipped,
+    /// and only namespace and pod_name option will be used
+    #[structopt(long, short)]
+    attach: bool,
 }
 
 #[tokio::main]
@@ -42,45 +48,52 @@ async fn main() -> anyhow::Result<()> {
     let pod_name = opt.pod_name;
     let image_name = opt.image;
     let pvc = opt.pvc;
-    let readonly = !opt.readwrite;
+    let readonly = !opt.write;
+    let attach_only = opt.attach;
+
+    if !attach_only && pvc.is_empty() {
+        anyhow::bail!("PVC name is required");
+    }
 
     let client = Client::try_default().await?;
-
-    let p: Pod = serde_json::from_value(serde_json::json!({
-        "apiVersion": "v1",
-        "kind": "Pod",
-        "metadata": { "name": pod_name },
-        "spec": {
-            "containers": [{
-                "name": pod_name,
-                "image": image_name,
-                // Do nothing
-                "command": ["tail", "-f", "/dev/null"],
-                "volumeMounts":[{
-                    "name": "mount-agent-pv",
-                    "mountPath": "/opt",
-                    "readOnly": readonly,
-                }],
-            }],
-            "volumes": [{
-                "name": "mount-agent-pv",
-                "persistentVolumeClaim": {
-                    "claimName": pvc,
-                }
-            }],
-        }
-    }))?;
-
-    debug!("{:?}", p);
-
     let pods: Api<Pod> = Api::namespaced(client, &namespace);
-    // Stop on error including a pod already exists or is still being deleted.
-    pods.create(&PostParams::default(), &p).await?;
 
-    debug!("pod created");
+    if !attach_only {
+        let p: Pod = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": { "name": pod_name },
+            "spec": {
+                "containers": [{
+                    "name": pod_name,
+                    "image": image_name,
+                    // Do nothing
+                    "command": ["tail", "-f", "/dev/null"],
+                    "volumeMounts":[{
+                        "name": "mount-agent-pv",
+                        "mountPath": "/opt",
+                        "readOnly": readonly,
+                    }],
+                }],
+                "volumes": [{
+                    "name": "mount-agent-pv",
+                    "persistentVolumeClaim": {
+                        "claimName": pvc,
+                    }
+                }],
+            }
+        }))?;
+
+        debug!("{:?}", p);
+        // Stop on error including a pod already exists or is still being deleted.
+        pods.create(&PostParams::default(), &p).await?;
+        debug!("pod created");
+    }
 
     // Wait until the pod is running, otherwise we get 500 error.
-    let lp = ListParams::default().fields(format!("metadata.name={}", &pod_name).as_str()).timeout(opt.timeout);
+    let lp = ListParams::default()
+        .fields(format!("metadata.name={}", &pod_name).as_str())
+        .timeout(opt.timeout);
     let mut stream = pods.watch(&lp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
         match status {
@@ -114,11 +127,15 @@ async fn main() -> anyhow::Result<()> {
     let mut stdout = tokio::io::stdout();
     // pipe current stdin to the stdin writer from ws
     tokio::spawn(async move {
-        tokio::io::copy(&mut stdin, &mut stdin_writer).await.unwrap();
+        tokio::io::copy(&mut stdin, &mut stdin_writer)
+            .await
+            .unwrap();
     });
     // pipe stdout from ws to current stdout
     tokio::spawn(async move {
-        tokio::io::copy(&mut stdout_reader, &mut stdout).await.unwrap();
+        tokio::io::copy(&mut stdout_reader, &mut stdout)
+            .await
+            .unwrap();
     });
     // When done, type `exit\n` to end it, so the pod is deleted.
     let status = attached.await;
