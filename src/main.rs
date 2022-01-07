@@ -112,34 +112,39 @@ async fn main() -> anyhow::Result<()> {
     }
 
     debug!("attaching to pod");
+    // kubectl has a better way to handle tty (search TTY.Safe in source), so we just use kubectl.
+    // https://sourcegraph.com/github.com/kubernetes/kubernetes@master/-/blob/staging/src/k8s.io/kubectl/pkg/util/term/term.go?L106:14#tab=references
 
-    // Do an interactive exec to a blog pod with the `sh` command
-    let ap = AttachParams::interactive_tty();
-    let mut attached = pods.exec(&pod_name, vec!["sh"], &ap).await?;
+    // use os.Command to run kubectl
+    // TODO: have to compat with multiple platforms
 
-    // The received streams from `AttachedProcess`
-    let mut stdin_writer = attached.stdin().unwrap();
-    let mut stdout_reader = attached.stdout().unwrap();
-
-    // > For interactive uses, it is recommended to spawn a thread dedicated to user input and use blocking IO directly in that thread.
-    // > https://docs.rs/tokio/0.2.24/tokio/io/fn.stdin.html
-    let mut stdin = tokio::io::stdin();
-    let mut stdout = tokio::io::stdout();
-    // pipe current stdin to the stdin writer from ws
-    tokio::spawn(async move {
-        tokio::io::copy(&mut stdin, &mut stdin_writer)
-            .await
-            .unwrap();
-    });
-    // pipe stdout from ws to current stdout
-    tokio::spawn(async move {
-        tokio::io::copy(&mut stdout_reader, &mut stdout)
-            .await
-            .unwrap();
-    });
-    // When done, type `exit\n` to end it, so the pod is deleted.
-    let status = attached.await;
-    debug!("{:?}", status);
+    // // Do an interactive exec to a blog pod with the `sh` command
+    // let ap = AttachParams::interactive_tty();
+    // let mut attached = pods.exec(&pod_name, vec!["sh"], &ap).await?;
+    //
+    // // The received streams from `AttachedProcess`
+    // let mut stdin_writer = attached.stdin().unwrap();
+    // let mut stdout_reader = attached.stdout().unwrap();
+    //
+    // // > For interactive uses, it is recommended to spawn a thread dedicated to user input and use blocking IO directly in that thread.
+    // // > https://docs.rs/tokio/0.2.24/tokio/io/fn.stdin.html
+    // let mut stdin = tokio::io::stdin();
+    // let mut stdout = tokio::io::stdout();
+    // // pipe current stdin to the stdin writer from ws
+    // tokio::spawn(async move {
+    //     tokio::io::copy(&mut stdin, &mut stdin_writer)
+    //         .await
+    //         .unwrap();
+    // });
+    // // pipe stdout from ws to current stdout
+    // tokio::spawn(async move {
+    //     tokio::io::copy(&mut stdout_reader, &mut stdout)
+    //         .await
+    //         .unwrap();
+    // });
+    // // When done, type `exit\n` to end it, so the pod is deleted.
+    // let status = attached.await;
+    // debug!("{:?}", status);
 
     // Delete it
     debug!("deleting");
