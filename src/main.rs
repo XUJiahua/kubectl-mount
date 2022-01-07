@@ -1,12 +1,10 @@
-use std::process::exit;
-
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     api::{Api, AttachParams, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
     Client,
 };
-use log::{debug, warn};
+use log::{debug};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -26,9 +24,9 @@ struct Opt {
     /// Persistent Volume Claim (PVC) name
     #[structopt(long)]
     pvc: String,
-    /// Readonly mode
-    #[structopt(default_value = "true", long)]
-    readonly: bool,
+    /// By default, Readonly mode
+    #[structopt(long)]
+    readwrite: bool,
 }
 
 #[tokio::main]
@@ -44,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let pod_name = opt.pod_name;
     let image_name = opt.image;
     let pvc = opt.pvc;
-    let readonly = opt.readonly;
+    let readonly = !opt.readwrite;
 
     let client = Client::try_default().await?;
 
