@@ -27,6 +27,9 @@ struct Opt {
     /// Persistent Volume Claim (PVC) name
     #[structopt(default_value = "", long)]
     pvc: String,
+    /// mount path in Pod
+    #[structopt(default_value = "/opt", long, short)]
+    mount_path: String,
     /// by default, mount PVC in readonly mode
     #[structopt(long, short)]
     write: bool,
@@ -50,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let pod_name = opt.pod_name;
     let image_name = opt.image;
     let pvc = opt.pvc;
+    let mount_path = opt.mount_path;
     let readonly = !opt.write;
     let attach_only = opt.attach;
 
@@ -73,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
                     "command": ["tail", "-f", "/dev/null"],
                     "volumeMounts":[{
                         "name": "mount-agent-pv",
-                        "mountPath": "/opt",
+                        "mountPath": mount_path,
                         "readOnly": readonly,
                     }],
                 }],
