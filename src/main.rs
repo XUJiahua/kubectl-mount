@@ -1,3 +1,4 @@
+use env_logger::Env;
 use std::process::Command;
 
 use futures::{StreamExt, TryStreamExt};
@@ -47,7 +48,8 @@ struct Opt {
 async fn main() -> anyhow::Result<()> {
     // init log
     // std::env::set_var("RUST_LOG", "info,kube=debug");
-    env_logger::init();
+    // env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     // parse flags
     let opt = Opt::from_args();
