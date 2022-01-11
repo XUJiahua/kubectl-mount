@@ -1,7 +1,9 @@
+use std::process::Command;
+
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    api::{Api, AttachParams, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
+    api::{Api, DeleteParams, ListParams, PostParams, ResourceExt, WatchEvent},
     Client,
 };
 use log::debug;
@@ -115,8 +117,17 @@ async fn main() -> anyhow::Result<()> {
     // kubectl has a better way to handle tty (search TTY.Safe in source), so we just use kubectl.
     // https://sourcegraph.com/github.com/kubernetes/kubernetes@master/-/blob/staging/src/k8s.io/kubectl/pkg/util/term/term.go?L106:14#tab=references
 
-    // use os.Command to run kubectl
+    let command = format!(
+        "kubectl exec -it {} -- sh",
+        &pod_name,
+    );
     // TODO: have to compat with multiple platforms
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(&command)
+        .spawn()?;
+
+    child.wait()?;
 
     // // Do an interactive exec to a blog pod with the `sh` command
     // let ap = AttachParams::interactive_tty();
