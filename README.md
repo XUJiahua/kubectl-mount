@@ -6,6 +6,8 @@ A kubectl plugin to mount Persistent Volume Claim (PVC) on a new and interactive
 
 ## Installation
 
+Download release https://github.com/XUJiahua/kubectl-mount/releases under $PATH.
+
 ### Cargo
 
 ```
