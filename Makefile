@@ -5,9 +5,5 @@ uninstall:
 	helm uninstall mysql
 test:
 	cargo run -- --pvc data-mysql-0
-build-linux:
-	cross build --release --target=x86_64-unknown-linux-gnu
-build-macos:
-	cross build --release --target=x86_64-apple-darwin
-build-windows:
-	cross build --release --target=x86_64-pc-windows-gnu
+release:
+	goreleaser release --rm-dist
