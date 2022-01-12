@@ -121,8 +121,11 @@ async fn main() -> anyhow::Result<()> {
     // https://sourcegraph.com/github.com/kubernetes/kubernetes@master/-/blob/staging/src/k8s.io/kubectl/pkg/util/term/term.go?L106:14#tab=references
 
     let command = format!("kubectl exec -it {} -- sh", &pod_name,);
-    // TODO: have to compat with multiple platforms
-    let mut child = Command::new("sh").arg("-c").arg(&command).spawn()?;
+    let mut child = if cfg!(target_os = "windows") {
+        Command::new("cmd").arg("/C").arg(&command).spawn()?
+    } else {
+        Command::new("sh").arg("-c").arg(&command).spawn()?
+    };
 
     child.wait()?;
 
