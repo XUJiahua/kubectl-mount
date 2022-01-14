@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
     // kubectl has a better way to handle tty (search TTY.Safe in source), so we just use kubectl.
     // https://sourcegraph.com/github.com/kubernetes/kubernetes@master/-/blob/staging/src/k8s.io/kubectl/pkg/util/term/term.go?L106:14#tab=references
 
-    let command = format!("kubectl exec -it {} -n {} -- sh", &pod_name, &namespace);
+    let command = format!("kubectl exec -it {} -n {} -c {} -- sh", &pod_name, &namespace, &pod_name);
     let mut child = if cfg!(target_os = "windows") {
         Command::new("cmd").arg("/C").arg(&command).spawn()?
     } else {
